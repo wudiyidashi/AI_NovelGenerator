@@ -287,6 +287,54 @@ class SiliconFlowEmbeddingAdapter(BaseEmbeddingAdapter):
             logging.error(f"Error parsing SiliconFlow API response: {str(e)}")
             return []
 
+class BaichuanEmbeddingAdapter(BaseEmbeddingAdapter):
+    """
+    基于百川嵌入模型的适配器
+    """
+    def __init__(self, api_key: str, base_url: str, model_name: str):
+        self.api_key = api_key
+        self.base_url = base_url.rstrip("/")
+        self.model_name = model_name
+        self.headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        embeddings = []
+        for text in texts:
+            vec = self._embed_single(text)
+            embeddings.append(vec)
+        return embeddings
+
+    def embed_query(self, query: str) -> List[float]:
+        return self._embed_single(query)
+
+    def _embed_single(self, text: str) -> List[float]:
+        """
+        调用百川嵌入API获取文本向量
+        """
+        url = f"{self.base_url}"
+        payload = {
+            "model": self.model_name,
+            "input": text
+        }
+
+        try:
+            response = requests.post(url, json=payload, headers=self.headers)
+            response.raise_for_status()
+            result = response.json()
+            if "data" not in result or not result["data"]:
+                logging.error(f"Invalid response format from Baichuan API: {result}")
+                return []
+            return result["data"][0].get("embedding", [])
+        except requests.exceptions.RequestException as e:
+            logging.error(f"Baichuan API request failed: {str(e)}")
+            return []
+        except (KeyError, IndexError, ValueError, TypeError) as e:
+            logging.error(f"Error parsing Baichuan API response: {str(e)}")
+            return []
+
 def create_embedding_adapter(
     interface_format: str,
     api_key: str,
@@ -309,5 +357,7 @@ def create_embedding_adapter(
         return GeminiEmbeddingAdapter(api_key, model_name, base_url)
     elif fmt == "siliconflow":
         return SiliconFlowEmbeddingAdapter(api_key, base_url, model_name)
+    elif fmt == "baichuan":
+        return BaichuanEmbeddingAdapter(api_key, base_url, model_name)
     else:
         raise ValueError(f"Unknown embedding interface_format: {interface_format}")
